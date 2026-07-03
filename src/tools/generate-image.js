@@ -159,10 +159,15 @@ export async function handleGenerateImage(args) {
 
     // STEP 6: Fill the prompt.
     // Flow is agent-first: a plain descriptive prompt makes the agent ask
-    // clarifying questions instead of generating. An imperative wrapper makes
-    // it generate directly in one shot.
+    // clarifying questions AND lets it reinterpret/simplify the request. The
+    // wrapper does two things: (1) force a one-shot generation (no dialogue),
+    // (2) bind the agent to the user's description verbatim — render every
+    // element mentioned, add nothing that wasn't asked, drop nothing.
     const imperativePrompt =
-      `Genera subito un'immagine, senza farmi domande e senza chiedere chiarimenti: ${args.prompt}`;
+      `Genera subito un'immagine, senza farmi domande e senza chiedere chiarimenti. ` +
+      `Attieniti FEDELMENTE a questa descrizione: includi TUTTI gli elementi, soggetti e ` +
+      `dettagli indicati, non aggiungere nulla che non sia richiesto e non omettere nulla. ` +
+      `Descrizione: ${args.prompt}`;
     await promptInput.click();
     await promptInput.fill('');
     await page.waitForTimeout(200);
@@ -220,6 +225,20 @@ export async function handleGenerateImage(args) {
       }
     }
 
+    // Baseline: UUIDs already in the DOM before we generate — Flow's UI has
+    // decorative assets and other-session thumbnails served from the SAME media
+    // endpoint. Capture them now so we keep ONLY newly generated images and never
+    // download a background/asset by mistake.
+    const baselineUuids = await page.evaluate(() => {
+      const s = new Set();
+      document.querySelectorAll('img').forEach(img => {
+        const m = (img.src || '').match(/media\.getMediaUrlRedirect\?name=([a-f0-9-]+)/);
+        if (m) s.add(m[1]);
+      });
+      return [...s];
+    });
+    logger.info('Baseline images captured', { count: baselineUuids.length });
+
     // STEP 10: Click generate ⚠️ CRÉDITS SERONT CONSOMMÉS
     logger.info('⚠️⚠️⚠️ Cliquant Generate — des crédits vont être consommés');
     await generateBtnLocator.click();
@@ -258,18 +277,19 @@ export async function handleGenerateImage(args) {
     while (Date.now() - genStart < genTimeoutMs) {
       await page.waitForTimeout(2000);
 
-      const imageUuids = await page.evaluate(() => {
+      const imageUuids = await page.evaluate((baseline) => {
         const imgs = Array.from(document.querySelectorAll('img'));
         const uuids = [];
         imgs.forEach(img => {
           const src = img.src || '';
           const match = src.match(/media\.getMediaUrlRedirect\?name=([a-f0-9-]+)/);
-          if (match && img.width > 100) {
+          // Only NEW images (not in baseline) and reasonably sized.
+          if (match && img.width > 100 && !baseline.includes(match[1])) {
             uuids.push(match[1]);
           }
         });
         return [...new Set(uuids)];
-      });
+      }, baselineUuids);
 
       if (imageUuids.length > 0) {
         generatedImageUuids = imageUuids;

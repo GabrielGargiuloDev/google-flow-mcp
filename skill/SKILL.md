@@ -38,12 +38,34 @@ Call `flow_connect`:
 - `WRONG_GOOGLE_ACCOUNT` → stop; setup mismatch.
 - `flow_account_check` → `method:"assumed"` means unverified, not a green light.
 
+## STEP 1.5 — Build a faithful prompt (always, before generating)
+
+Flow's agent and the models render far more faithfully from a rich, structured prompt
+than from a bare phrase. Turn the user's request into a complete prompt **without
+betraying intent** — enrich, never invent:
+- Keep every element the user named; never drop or swap any.
+- Add only supporting detail (subject + action + setting + lighting + composition +
+  style/medium + mood + quality cues; for video also camera movement + pacing). Do NOT
+  add subjects/objects/text the user didn't ask for. Preserve explicit constraints
+  ("red mug, no logo") verbatim.
+- Match `ratio` to the use (16:9 scene, 9:16 story, 1:1 icon).
+
+The server also wraps the prompt so the agent stays bound to it verbatim.
+
 ## STEP 2 — Images (free)
 
 `flow_generate_image` with `auto_confirm:true`. Models: `Nano Banana 2` (default),
-`Nano Banana Pro`, `Imagen 4`. Params: `prompt`, `ratio`, `project_name`, `campaign`.
-Result `files[]` = saved paths. (The `credits_consumed` flag is hardcoded; images are
-free against the Flow pool.)
+`Nano Banana Pro` (best fidelity — prefer for complex prompts), `Imagen 4`. Params:
+`prompt`, `ratio`, `project_name`, `campaign`. Result `files[]` = saved paths. (The
+`credits_consumed` flag is hardcoded; images are free against the Flow pool.)
+
+### Verify & refine (images — free, so always do it)
+
+After generating, **open the image with vision** and compare it to the request element
+by element (subjects present? constraints respected? right composition? nothing
+unwanted added?). If it matches → deliver. If not → refine the prompt to emphasize the
+failed element and regenerate (up to 3×; images cost nothing). This catches real
+misses — e.g. the download picking a UI asset instead of the generated image.
 
 ## STEP 3 — Video (⚠️ consumes credits)
 

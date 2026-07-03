@@ -76,8 +76,12 @@ export async function handleGenerateVideo(args) {
 
     // Flow is agent-first: an imperative prompt that names the model, duration
     // and "video" makes the agent generate directly instead of asking questions.
+    // The fidelity clause binds the agent to the user's description verbatim.
     const imperativePrompt =
-      `Genera subito un video di ${duration} con il modello ${model}, senza farmi domande e senza chiedere chiarimenti: ${args.prompt}`;
+      `Genera subito un video di ${duration} con il modello ${model}, senza farmi domande e senza chiedere chiarimenti. ` +
+      `Attieniti FEDELMENTE a questa descrizione: includi TUTTI gli elementi, soggetti, azioni e ` +
+      `dettagli indicati, non aggiungere nulla che non sia richiesto e non omettere nulla. ` +
+      `Descrizione: ${args.prompt}`;
 
     await page.keyboard.press('Escape');
     await page.waitForTimeout(400);
@@ -118,6 +122,22 @@ export async function handleGenerateVideo(args) {
       await takeScreenshot(page, 'no-video-generate-btn');
       throw new FlowError(ErrorCodes.GENERATION_BUTTON_DISABLED, 'Video submit button not found');
     }
+    // Baseline media before generating — Flow's UI assets and other-session
+    // thumbnails share the same media endpoint, so we keep only the NEW video.
+    const baselineUuids = [];
+    for (const frame of page.frames()) {
+      const b = await frame.evaluate(() => {
+        const s = new Set();
+        document.querySelectorAll('img,video').forEach(el => {
+          const src = el.src || el.currentSrc || el.getAttribute('poster') || '';
+          const m = src.match(/media\.getMediaUrlRedirect\?name=([a-f0-9-]+)/);
+          if (m) s.add(m[1]);
+        });
+        return [...s];
+      }).catch(() => []);
+      baselineUuids.push(...b);
+    }
+
     await submit.click();
 
     // Poll for the generated video. Two things happen during this window and
@@ -176,7 +196,7 @@ export async function handleGenerateVideo(args) {
       for (const frame of page.frames()) {
         const r = await scanFrame(frame);
         if (r.vsrc) videoSrc = r.vsrc;
-        r.uuids.forEach(u => uuids.add(u));
+        r.uuids.forEach(u => { if (!baselineUuids.includes(u)) uuids.add(u); });
       }
       if (uuids.size) {
         mediaUuids = [...uuids];
