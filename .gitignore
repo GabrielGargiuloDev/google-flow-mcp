@@ -1,0 +1,16 @@
+node_modules/
+logs/
+screenshots-debug/
+outputs/
+chrome-profile-kiara/
+screenshot*.png
+config/flow.config.json
+config/flow.projects.json
+fallback/config.json
+.env
+.DS_Store
+*.log
+
+config/selectors.map.json
+__pycache__/
+*.pyc
